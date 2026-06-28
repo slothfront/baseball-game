@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>⚾ 2人対戦ベースボール（読み合い）</title>
+<style>
+  :root {
+    --grass: #3a8f4a;
+    --grass-dark: #2f7a3e;
+    --line: #f5f5f5;
+    --p1: #2d7dd2;
+    --p2: #e15554;
+    --panel: #1b2430;
+    --panel-light: #26313f;
+    --gold: #ffd166;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    font-family: "Segoe UI", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif;
+    background: radial-gradient(circle at 50% 0%, #20303f, #0d141c);
+    color: #eef2f6;
+    -webkit-user-select: none; user-select: none;
+  }
+  #app { max-width: 880px; margin: 0 auto; padding: 16px;
+    display: flex; flex-direction: column; gap: 14px; min-height: 100%; }
+  h1 { text-align: center; font-size: 1.55rem; letter-spacing: 1px; }
+  h1 small { font-weight: normal; opacity: .7; font-size: .85rem; display:block; margin-top:2px;}
+
+  /* Scoreboard */
+  .scoreboard {
+    background: var(--panel); border: 2px solid #3a4756; border-radius: 12px;
+    padding: 12px 14px; display: grid;
+    grid-template-columns: 1fr auto auto auto; gap: 6px 14px; align-items: center;
+    box-shadow: 0 6px 20px rgba(0,0,0,.4);
+  }
+  .sb-header { font-size: .7rem; opacity: .6; text-transform: uppercase; letter-spacing: 1px; text-align:center; }
+  .sb-team { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+  .dot { width: 14px; height: 14px; border-radius: 50%; flex: none; display:inline-block; }
+  .dot.p1 { background: var(--p1); }
+  .dot.p2 { background: var(--p2); }
+  .sb-runs { font-size: 1.5rem; font-weight: 800; text-align: center; min-width: 36px; }
+  .sb-cell { text-align: center; font-variant-numeric: tabular-nums; }
+  .role-flag { font-size: .6rem; padding: 1px 6px; border-radius: 6px; font-weight: 800; visibility: hidden; }
+  .role-flag.bat { background: var(--gold); color:#222; }
+  .role-flag.field { background: #5b6b7d; color:#fff; }
+  .role-flag.on { visibility: visible; }
+
+  /* Inning + outs */
+  .status-strip {
+    display: flex; justify-content: space-between; align-items: center;
+    background: var(--panel-light); border-radius: 10px; padding: 8px 14px; flex-wrap: wrap; gap: 8px;
+  }
+  .status-strip .inning { font-weight: 800; font-size: 1.05rem; }
+  .count-group { display:flex; align-items:center; gap:6px; font-size:.85rem; }
+  .count-label { opacity:.65; }
+  .pips { display:flex; gap:5px; }
+  .pip { width:15px; height:15px; border-radius:50%; border:1.5px solid #5a6b7d; }
+  .pip.o.on { background:#e15554; border-color:#e15554; }
+
+  /* Field */
+  .field {
+    position: relative;
+    background: radial-gradient(circle at 50% 120%, var(--grass) 0%, var(--grass-dark) 70%);
+    border: 2px solid #2a5e35; border-radius: 12px; height: 250px; overflow: hidden;
+    box-shadow: inset 0 0 40px rgba(0,0,0,.35);
+  }
+  .diamond {
+    position:absolute; left:50%; bottom:26px; transform: translateX(-50%);
+    width: 150px; height: 150px;
+  }
+  .base {
+    position:absolute; width:22px; height:22px; background: var(--line);
+    border:2px solid #cfcfcf; transform: rotate(45deg);
+    display:flex; align-items:center; justify-content:center;
+    font-size:.5rem; color:#555; font-weight:800;
+  }
+  .base span { transform: rotate(-45deg); }
+  .base.occupied { background: var(--gold); box-shadow:0 0 14px var(--gold); }
+  .base.home  { left:50%; bottom:0;  transform: translateX(-50%) rotate(45deg); }
+  .base.first { right:0; bottom:50%; transform: translateY(50%) rotate(45deg); }
+  .base.second{ left:50%; top:0; transform: translateX(-50%) rotate(45deg); }
+  .base.third { left:0; bottom:50%; transform: translateY(50%) rotate(45deg); }
+  .base-path { position:absolute; inset:0; border:2px dashed rgba(255,255,255,.22); transform: rotate(45deg); border-radius:4px; }
+
+  .runner { position:absolute; width:14px; height:14px; border-radius:50%; box-shadow:0 0 8px rgba(0,0,0,.5); }
+
+  .secret-banner {
+    position:absolute; inset:0; background:rgba(10,15,22,.93);
+    display:none; flex-direction:column; align-items:center; justify-content:center; gap:10px;
+    text-align:center; padding:16px; z-index:5;
+  }
+  .secret-banner.show { display:flex; }
+  .secret-banner .eyes { font-size:2.6rem; }
+  .secret-banner .big { font-size:1.2rem; font-weight:800; }
+  .secret-banner .sub { font-size:.85rem; opacity:.8; }
+
+  .msg {
+    position:absolute; top:46%; left:50%; transform:translate(-50%,-50%);
+    font-size:2rem; font-weight:900; text-shadow:0 3px 8px rgba(0,0,0,.7);
+    text-align:center; pointer-events:none; opacity:0; transition: opacity .2s; letter-spacing:1px; z-index:4;
+  }
+  .msg.show { opacity:1; }
+  .msg.hr { color: var(--gold); }
+  .msg.out { color: #ff7b7b; }
+  .msg.hit { color: #7bffb0; }
+
+  /* Prompt */
+  .prompt {
+    background: var(--panel); border:2px solid #3a4756; border-radius:12px; padding:12px 16px;
+    text-align:center; display:flex; flex-direction:column; gap:6px;
+  }
+  .prompt .who { font-weight:800; font-size:1.05rem; }
+  .prompt .who.p1 { color: #7db8ef; }
+  .prompt .who.p2 { color: #f29b9a; }
+  .prompt .instr { font-size:.92rem; opacity:.92; line-height:1.5; }
+
+  /* Choice cards */
+  .choices { display:grid; grid-template-columns: repeat(4, 1fr); gap:10px; }
+  .choice {
+    cursor:pointer; border:2px solid #45566a; border-radius:12px; padding:14px 6px;
+    background: linear-gradient(180deg,#26313f,#1b2430); text-align:center;
+    transition: transform .06s, border-color .15s, background .15s; position:relative;
+  }
+  .choice:hover { border-color: var(--gold); }
+  .choice:active { transform: translateY(2px); }
+  .choice .ic { font-size:1.7rem; line-height:1; }
+  .choice .lb { font-weight:800; margin-top:6px; font-size:.95rem; }
+  .choice .key { font-size:.7rem; opacity:.55; margin-top:2px; }
+  .choice.disabled { opacity:.32; pointer-events:none; filter: grayscale(.7); border-style:dashed; }
+  .choice.disabled::after {
+    content:"✕ アウト"; position:absolute; top:6px; right:8px; font-size:.6rem; color:#ff8a8a; font-weight:800;
+  }
+  .choice.hidesel { border-color:#4cd07d; background: linear-gradient(180deg,#2c4a39,#1b2430); }
+  .choice.reveal-hit { border-color: var(--gold); background: linear-gradient(180deg,#4a431f,#1b2430); }
+  .choice.reveal-miss { border-color:#e15554; }
+
+  .keycap {
+    display:inline-block; background:#0d141c; border:1px solid #4a5b6d; border-bottom-width:3px;
+    border-radius:6px; padding:1px 8px; font-weight:700; margin:0 2px; font-family: ui-monospace, monospace; font-size:.82rem;
+  }
+  .btn {
+    display:inline-block; cursor:pointer; border:none; border-radius:10px; padding:10px 22px;
+    font-size:1rem; font-weight:800; color:#fff;
+    background: linear-gradient(180deg,#2d7dd2,#225fa0); box-shadow:0 4px 0 #1a487a; transition: transform .05s;
+  }
+  .btn:active { transform: translateY(2px); box-shadow:0 2px 0 #1a487a; }
+  .btn.alt { background: linear-gradient(180deg,#46b06a,#2f8a4f); box-shadow:0 4px 0 #246b3d; }
+  .btn.alt:active { box-shadow:0 2px 0 #246b3d; }
+
+  .hint { font-size:.78rem; opacity:.6; text-align:center; }
+
+  /* Overlays */
+  .overlay { position:fixed; inset:0; background:rgba(8,12,18,.92);
+    display:flex; align-items:center; justify-content:center; z-index:50; padding:16px; }
+  .overlay.hidden { display:none; }
+  .card { background:var(--panel); border:2px solid #3a4756; border-radius:16px; padding:24px;
+    max-width:480px; width:100%; box-shadow:0 12px 40px rgba(0,0,0,.6); }
+  .card h2 { text-align:center; margin-bottom:6px; }
+  .card p.sub { text-align:center; opacity:.7; font-size:.88rem; margin-bottom:16px; }
+  .field-row { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:10px 0; }
+  .field-row label { font-weight:700; }
+  .field-row input[type=text] { background:#0d141c; border:1px solid #4a5b6d; border-radius:8px; color:#fff;
+    padding:8px 10px; width:60%; font-size:.95rem; }
+  .seg { display:flex; gap:6px; }
+  .seg button { background:#0d141c; border:1px solid #4a5b6d; color:#cdd6df; border-radius:8px;
+    padding:6px 16px; cursor:pointer; font-weight:700; }
+  .seg button.active { background:var(--gold); color:#222; border-color:var(--gold); }
+  .rules { font-size:.82rem; opacity:.85; line-height:1.65; margin:14px 0; background:var(--panel-light); padding:12px; border-radius:10px;}
+  .rules b { color: var(--gold); }
+  .center { text-align:center; margin-top:8px; }
+
+  @media (max-width:560px){
+    .field { height: 220px; }
+    .msg { font-size:1.5rem; }
+    h1 { font-size:1.25rem; }
+    .choice .ic { font-size:1.4rem; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <h1>⚾ 2人対戦ベースボール <small>ボール隠し読み合いルール ・ 同じ端末で2人対戦</small></h1>
+
+  <!-- Scoreboard -->
+  <div class="scoreboard">
+    <div class="sb-header" style="grid-column:1/2;">チーム</div>
+    <div class="sb-header">得点</div>
+    <div class="sb-header">安打</div>
+    <div class="sb-header">役割</div>
+
+    <div class="sb-team"><span class="dot p1"></span><span id="name1">プレイヤー1</span></div>
+    <div class="sb-runs" id="runs1">0</div>
+    <div class="sb-cell" id="hits1">0</div>
+    <div class="sb-cell"><span class="role-flag" id="role1"></span></div>
+
+    <div class="sb-team"><span class="dot p2"></span><span id="name2">プレイヤー2</span></div>
+    <div class="sb-runs" id="runs2">0</div>
+    <div class="sb-cell" id="hits2">0</div>
+    <div class="sb-cell"><span class="role-flag" id="role2"></span></div>
+  </div>
+
+  <!-- Inning + outs -->
+  <div class="status-strip">
+    <div class="inning" id="inningLabel">1回 表</div>
+    <div class="count-group"><span class="count-label">アウト</span>
+      <span class="pips" id="outPips"></span></div>
+  </div>
+
+  <!-- Field -->
+  <div class="field" id="field">
+    <div class="diamond">
+      <div class="base-path"></div>
+      <div class="base second" id="base2"><span>2</span></div>
+      <div class="base third" id="base3"><span>3</span></div>
+      <div class="base first" id="base1"><span>1</span></div>
+      <div class="base home"><span>H</span></div>
+    </div>
+    <div class="msg" id="centerMsg"></div>
+    <div class="secret-banner" id="secretBanner">
+      <div class="eyes">🙈</div>
+      <div class="big" id="secretTitle">守備の番です</div>
+      <div class="sub" id="secretSub">攻撃側は画面を見ないでください</div>
+    </div>
+  </div>
+
+  <!-- Prompt -->
+  <div class="prompt">
+    <div class="who" id="promptWho">　</div>
+    <div class="instr" id="promptInstr">スタートボタンでプレイ開始。</div>
+  </div>
+
+  <!-- Choices -->
+  <div class="choices" id="choices">
+    <div class="choice" data-spot="1"><div class="ic">🥎</div><div class="lb">1塁打</div><div class="key">キー 1</div></div>
+    <div class="choice" data-spot="2"><div class="ic">🥎</div><div class="lb">2塁打</div><div class="key">キー 2</div></div>
+    <div class="choice" data-spot="3"><div class="ic">🥎</div><div class="lb">3塁打</div><div class="key">キー 3</div></div>
+    <div class="choice" data-spot="HR"><div class="ic">💥</div><div class="lb">ホームラン</div><div class="key">キー 4</div></div>
+  </div>
+
+  <div class="hint" id="globalHint">クリック / タップ、またはキーボードの 1〜4 で選べます。</div>
+</div>
+
+<!-- Setup overlay -->
+<div class="overlay" id="setup">
+  <div class="card">
+    <h2>⚾ 2人対戦ベースボール</h2>
+    <p class="sub">守備がボールを隠し、攻撃が読んで当てる心理戦の野球ゲーム</p>
+
+    <div class="field-row">
+      <label><span class="dot p1"></span> プレイヤー1</label>
+      <input type="text" id="inName1" maxlength="10" placeholder="プレイヤー1">
+    </div>
+    <div class="field-row">
+      <label><span class="dot p2"></span> プレイヤー2</label>
+      <input type="text" id="inName2" maxlength="10" placeholder="プレイヤー2">
+    </div>
+    <div class="field-row">
+      <label>イニング数</label>
+      <div class="seg" id="inningSeg">
+        <button data-v="3" class="active">3回</button>
+        <button data-v="5">5回</button>
+      </div>
+    </div>
+
+    <div class="rules">
+      <b>あそびかた</b><br>
+      ① <b>守備側</b>が、1塁打・2塁打・3塁打・ホームランの<b>どこか1つにボールを隠す</b>（攻撃側は画面を見ない）。<br>
+      ② <b>攻撃側</b>が4択から1つ選ぶ。<br>
+      ・<b>当たり</b>＝その塁ぶん進塁！ 打者交代で、守備がもう一度隠し直す。<br>
+      ・<b>ハズレ</b>＝<b>1アウト</b>。その塁は封鎖され、残りから選び直し（ボールは同じ場所のまま）。<br>
+      ③ <b>3アウト</b>で攻守交代。両チーム攻撃して1イニング。得点が多い方が勝ち！
+    </div>
+
+    <div class="center">
+      <button class="btn alt" id="startBtn">プレイ開始 ▶</button>
+    </div>
+  </div>
+</div>
+
+<!-- Game over overlay -->
+<div class="overlay hidden" id="gameover">
+  <div class="card">
+    <h2 id="goTitle">🏆 試合終了</h2>
+    <p class="sub" id="goSub"></p>
+    <div class="rules" id="goBox" style="text-align:center; font-size:1rem;"></div>
+    <div class="center"><button class="btn alt" id="rematchBtn">もう一度あそぶ 🔁</button></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  const SPOTS = ["1","2","3","HR"];
+  const SPOT_LABEL = { "1":"1塁打", "2":"2塁打", "3":"3塁打", "HR":"ホームラン" };
+  const SPOT_ADVANCE = { "1":1, "2":2, "3":3, "HR":4 };
+
+  const S = {
+    names: ["プレイヤー1","プレイヤー2"],
+    maxInnings: 3,
+    inning: 1,
+    half: 0,             // 0 = 表 (P1 bats), 1 = 裏 (P2 bats)
+    runs: [0,0],
+    hits: [0,0],
+    outs: 0,
+    bases: [false,false,false],  // 1st,2nd,3rd
+    battingTeam: 0,
+    phase: "idle",       // idle | hide | guess | result | over
+    hiddenSpot: null,
+    available: [],
+    locked: false,       // input lock during transitions
+  };
+
+  const $ = (id)=>document.getElementById(id);
+  const els = {
+    setup:$("setup"), gameover:$("gameover"),
+    name1:$("name1"), name2:$("name2"),
+    runs1:$("runs1"), runs2:$("runs2"), hits1:$("hits1"), hits2:$("hits2"),
+    role1:$("role1"), role2:$("role2"),
+    inningLabel:$("inningLabel"), outPips:$("outPips"),
+    base1:$("base1"), base2:$("base2"), base3:$("base3"),
+    centerMsg:$("centerMsg"),
+    secretBanner:$("secretBanner"), secretTitle:$("secretTitle"), secretSub:$("secretSub"),
+    promptWho:$("promptWho"), promptInstr:$("promptInstr"),
+    choices:$("choices"),
+  };
+
+  function fieldingTeam(){ return 1 - S.battingTeam; }
+
+  // ---------- Rendering ----------
+  function buildPips(){
+    els.outPips.innerHTML = "";
+    for(let i=0;i<3;i++){ const d=document.createElement("span"); d.className="pip o"; els.outPips.appendChild(d); }
+  }
+  function renderOuts(){
+    els.outPips.querySelectorAll(".pip").forEach((p,i)=>p.classList.toggle("on", i<S.outs));
+  }
+  function renderScore(){
+    els.runs1.textContent=S.runs[0]; els.runs2.textContent=S.runs[1];
+    els.hits1.textContent=S.hits[0]; els.hits2.textContent=S.hits[1];
+    setRoleFlag();
+  }
+  function setRoleFlag(){
+    const flags=[els.role1, els.role2];
+    flags.forEach((f,i)=>{
+      f.className="role-flag";
+      if(S.phase==="idle"||S.phase==="over"){ return; }
+      if(i===S.battingTeam){ f.classList.add("bat","on"); f.textContent="攻撃"; }
+      else { f.classList.add("field","on"); f.textContent="守備"; }
+    });
+  }
+  function renderBases(){
+    els.base1.classList.toggle("occupied", S.bases[0]);
+    els.base2.classList.toggle("occupied", S.bases[1]);
+    els.base3.classList.toggle("occupied", S.bases[2]);
+  }
+  function renderInning(){
+    const extra = S.inning>S.maxInnings ? "（延長）" : "";
+    els.inningLabel.textContent = `${S.inning}回 ${S.half===0?"表":"裏"}${extra}`;
+  }
+  function renderAll(){ renderOuts(); renderScore(); renderBases(); renderInning(); }
+
+  function showMsg(text, cls, dur){
+    els.centerMsg.textContent=text;
+    els.centerMsg.className="msg show "+(cls||"");
+    if(dur){ setTimeout(()=>els.centerMsg.classList.remove("show"), dur); }
+  }
+  function hideMsg(){ els.centerMsg.classList.remove("show"); }
+
+  function setPrompt(whoIdx, role, instrHTML){
+    els.promptWho.textContent = `${S.names[whoIdx]}（${role}）`;
+    els.promptWho.className = "who "+(whoIdx===0?"p1":"p2");
+    els.promptInstr.innerHTML = instrHTML;
+  }
+
+  // ---------- Choice cards ----------
+  function resetChoices(){
+    els.choices.querySelectorAll(".choice").forEach(c=>{
+      c.className="choice";
+    });
+  }
+  function markAvailability(){
+    els.choices.querySelectorAll(".choice").forEach(c=>{
+      const spot=c.getAttribute("data-spot");
+      c.classList.remove("hidesel","reveal-hit","reveal-miss");
+      c.classList.toggle("disabled", !S.available.includes(spot));
+    });
+  }
+
+  // ---------- Game flow ----------
+  function startBatterTurn(){
+    if(checkGameEnd()) return;
+    S.hiddenSpot=null;
+    S.available=SPOTS.slice();
+    S.phase="hide";
+    S.locked=false;
+    resetChoices();
+    setRoleFlag();
+    hideMsg();
+
+    // Secret hide phase: only fielding player interacts; offense looks away.
+    els.secretTitle.textContent = `${S.names[fieldingTeam()]}（守備）がボールを隠します`;
+    els.secretSub.textContent = `${S.names[S.battingTeam]}（攻撃）は画面から目をそらしてね 🙈`;
+    els.secretBanner.classList.add("show");
+
+    setPrompt(fieldingTeam(), "守備",
+      `1塁打・2塁打・3塁打・ホームランの<b>どこかにボールを隠そう</b>。<br>` +
+      `<span class="keycap">1</span><span class="keycap">2</span><span class="keycap">3</span><span class="keycap">4</span> またはカードを選択（相手に見られないように！）`);
+  }
+
+  function defenseHide(spot){
+    if(S.phase!=="hide" || S.locked) return;
+    if(!S.available.includes(spot)) return;
+    S.hiddenSpot=spot;
+    S.phase="guess";
+    els.secretBanner.classList.remove("show");
+    markAvailability();
+    showMsg("ボールを隠した！", "", 900);
+    setTimeout(promptGuess, 700);
+  }
+
+  function promptGuess(){
+    if(S.phase!=="guess") return;
+    hideMsg();
+    markAvailability();
+    const remain = S.available.map(s=>SPOT_LABEL[s]).join("・");
+    setPrompt(S.battingTeam, "攻撃",
+      `ボールはどこ？ 当てれば進塁、外せば<b>1アウト</b>。<br>` +
+      `選べる: <b>${remain}</b>`);
+  }
+
+  function offenseGuess(spot){
+    if(S.phase!=="guess" || S.locked) return;
+    if(!S.available.includes(spot)) return;
+    S.locked=true;
+
+    const card = els.choices.querySelector(`.choice[data-spot="${spot}"]`);
+
+    if(spot===S.hiddenSpot){
+      // HIT — advance
+      S.phase="result";
+      if(card) card.classList.add("reveal-hit");
+      S.hits[S.battingTeam]++;
+      const adv=SPOT_ADVANCE[spot];
+      const runs=advanceRunners(adv);
+      renderAll();
+      const label = spot==="HR"
+        ? (runs>1 ? `${runs}ランホームラン！💥` : "ホームラン！💥")
+        : `${SPOT_LABEL[spot]}！`;
+      const cls = spot==="HR" ? "hr" : "hit";
+      showMsg(label + (runs>0 && spot!=="HR" ? ` ${runs}点!` : ""), cls, 1700);
+      setTimeout(()=>{ if(!checkGameEnd()) startBatterTurn(); }, 1850);
+    } else {
+      // MISS — out, lock that spot, keep guessing (ball stays)
+      if(card) card.classList.add("reveal-miss");
+      S.outs++;
+      S.available=S.available.filter(s=>s!==spot);
+      renderOuts();
+      showMsg("ハズレ… 1アウト", "out", 1100);
+      setTimeout(()=>{
+        if(card){ card.classList.remove("reveal-miss"); }
+        markAvailability();
+        if(S.outs>=3){
+          endHalfInning();
+        } else {
+          S.phase="guess";
+          S.locked=false;
+          promptGuess();
+        }
+      }, 1200);
+    }
+  }
+
+  // returns runs scored
+  function advanceRunners(bases){
+    let runs=0;
+    const occ=[...S.bases];
+    const nb=[false,false,false];
+    for(let i=2;i>=0;i--){
+      if(occ[i]){ const np=i+bases; if(np>=3) runs++; else nb[np]=true; }
+    }
+    const bp=bases-1;
+    if(bp>=3) runs++; else nb[bp]=true;
+    S.bases=nb;
+    S.runs[S.battingTeam]+=runs;
+    return runs;
+  }
+
+  // ---------- Inning flow ----------
+  function endHalfInning(){
+    S.locked=true;
+    showMsg("3アウト チェンジ！", "out", 1400);
+    setTimeout(()=>{
+      hideMsg();
+      S.outs=0;
+      S.bases=[false,false,false];
+
+      const finalInning = S.inning>=S.maxInnings;
+      if(S.half===0){
+        // top finished — if final inning & home already leads, no need to play bottom
+        if(finalInning && S.runs[1]>S.runs[0]){ endGame(); return; }
+        S.half=1; S.battingTeam=1;
+      } else {
+        // bottom finished
+        if(S.inning>=S.maxInnings && S.runs[0]!==S.runs[1]){ endGame(); return; }
+        S.half=0; S.inning++; S.battingTeam=0;
+      }
+      renderAll();
+      const extraTag = S.inning>S.maxInnings ? "（延長）" : "";
+      showMsg(`${S.inning}回 ${S.half===0?"表":"裏"}${extraTag}`, "", 1300);
+      setTimeout(()=>{ hideMsg(); startBatterTurn(); }, 1400);
+    }, 1500);
+  }
+
+  function checkGameEnd(){
+    // walk-off during bottom of final inning
+    if(S.inning>=S.maxInnings && S.half===1 && S.runs[1]>S.runs[0]){
+      endGame(); return true;
+    }
+    return false;
+  }
+
+  function endGame(){
+    S.phase="over";
+    S.locked=true;
+    els.secretBanner.classList.remove("show");
+    setRoleFlag();
+    const a=S.runs[0], b=S.runs[1];
+    let title, sub;
+    if(a===b){ title="🤝 引き分け"; sub="両者譲らず、見事な投げ合い！"; }
+    else { const w=a>b?0:1; title=`🏆 ${S.names[w]} の勝ち！`; sub="ナイスゲーム！"; }
+    $("goTitle").textContent=title;
+    $("goSub").textContent=sub;
+    $("goBox").innerHTML =
+      `<div style="font-size:1.4rem;font-weight:800;margin-bottom:6px;">`+
+      `${S.names[0]} <span style="color:var(--gold)">${a}</span> - `+
+      `<span style="color:var(--gold)">${b}</span> ${S.names[1]}</div>`+
+      `<div style="opacity:.75;font-size:.85rem;">安打 ${S.hits[0]} - ${S.hits[1]} ／ ${S.maxInnings}回制</div>`;
+    els.gameover.classList.remove("hidden");
+  }
+
+  // ---------- Input ----------
+  function handleSpot(spot){
+    if(S.phase==="hide") defenseHide(spot);
+    else if(S.phase==="guess") offenseGuess(spot);
+  }
+
+  els.choices.querySelectorAll(".choice").forEach(c=>{
+    c.addEventListener("click", ()=>{
+      const spot=c.getAttribute("data-spot");
+      if(c.classList.contains("disabled")) return;
+      handleSpot(spot);
+    });
+  });
+
+  document.addEventListener("keydown",(e)=>{
+    if(S.phase!=="hide" && S.phase!=="guess") return;
+    const map={"1":"1","2":"2","3":"3","4":"HR"};
+    if(map[e.key]){ e.preventDefault(); handleSpot(map[e.key]); }
+  });
+
+  // ---------- Setup ----------
+  $("inningSeg").addEventListener("click",(e)=>{
+    const b=e.target.closest("button"); if(!b) return;
+    $("inningSeg").querySelectorAll("button").forEach(x=>x.classList.remove("active"));
+    b.classList.add("active");
+  });
+  $("startBtn").addEventListener("click", startGame);
+  $("rematchBtn").addEventListener("click", ()=>{
+    els.gameover.classList.add("hidden");
+    els.setup.classList.remove("hidden");
+  });
+
+  function startGame(){
+    const n1=($("inName1").value||"").trim()||"プレイヤー1";
+    const n2=($("inName2").value||"").trim()||"プレイヤー2";
+    const seg=$("inningSeg").querySelector("button.active");
+    S.names=[n1,n2];
+    S.maxInnings=parseInt(seg.getAttribute("data-v"),10)||3;
+    els.name1.textContent=n1; els.name2.textContent=n2;
+
+    S.inning=1; S.half=0; S.runs=[0,0]; S.hits=[0,0];
+    S.outs=0; S.bases=[false,false,false]; S.battingTeam=0;
+
+    buildPips(); renderAll(); resetChoices();
+    els.setup.classList.add("hidden");
+
+    showMsg("1回 表 プレイボール！", "", 1500);
+    setTimeout(()=>{ hideMsg(); startBatterTurn(); }, 1600);
+  }
+
+  buildPips(); renderAll();
+})();
+</script>
+</body>
+</html>
