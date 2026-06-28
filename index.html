@@ -145,6 +145,14 @@
   .choice.hidesel { border-color:#4cd07d; background: linear-gradient(180deg,#2c4a39,#1b2430); }
   .choice.reveal-hit { border-color: var(--gold); background: linear-gradient(180deg,#4a431f,#1b2430); }
   .choice.reveal-miss { border-color:#e15554; }
+  .choice.reveal-answer {
+    border-color: var(--gold) !important; background: linear-gradient(180deg,#4a431f,#1b2430) !important;
+    opacity:1 !important; filter:none !important; animation: pulseGold .7s ease-in-out 2;
+  }
+  .choice.reveal-answer::after {
+    content:"⚾ ここ！"; position:absolute; top:6px; right:8px; font-size:.62rem; color:var(--gold); font-weight:800;
+  }
+  @keyframes pulseGold { 0%,100%{box-shadow:0 0 0 rgba(255,209,102,0);} 50%{box-shadow:0 0 18px rgba(255,209,102,.85);} }
 
   .keycap {
     display:inline-block; background:#0d141c; border:1px solid #4a5b6d; border-bottom-width:3px;
@@ -482,7 +490,8 @@
         if(card){ card.classList.remove("reveal-miss"); }
         markAvailability();
         if(S.outs>=3){
-          endHalfInning();
+          revealAnswer();            // 答え合わせ: 隠し場所を公開
+          setTimeout(endHalfInning, 2100);
         } else {
           S.phase="guess";
           S.locked=false;
@@ -505,6 +514,16 @@
     S.bases=nb;
     S.runs[S.battingTeam]+=runs;
     return runs;
+  }
+
+  // Reveal where the ball was hidden when the side is retired without finding it.
+  function revealAnswer(){
+    const hidden=S.hiddenSpot;
+    const card=els.choices.querySelector(`.choice[data-spot="${hidden}"]`);
+    if(card){ card.classList.remove("disabled","reveal-miss"); card.classList.add("reveal-answer"); }
+    showMsg(`答え合わせ：ボールは ${SPOT_LABEL[hidden]} 💡`, "", 0);
+    setPrompt(fieldingTeam(), "守備",
+      `ボールは <b>${SPOT_LABEL[hidden]}</b> に隠れていました！`);
   }
 
   // ---------- Inning flow ----------
