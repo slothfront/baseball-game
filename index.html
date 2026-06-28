@@ -92,9 +92,18 @@
     text-align:center; padding:16px; z-index:5;
   }
   .secret-banner.show { display:flex; }
-  .secret-banner .eyes { font-size:2.6rem; }
-  .secret-banner .big { font-size:1.2rem; font-weight:800; }
-  .secret-banner .sub { font-size:.85rem; opacity:.8; }
+  .secret-banner .eyes { font-size:2.4rem; }
+  .secret-banner .big { font-size:1.15rem; font-weight:800; }
+  .secret-banner .sub { font-size:.82rem; opacity:.8; }
+  .hide-choices { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; margin-top:6px; }
+  .hbtn {
+    cursor:pointer; border:2px solid #45566a; border-radius:10px; padding:8px 12px;
+    background:#26313f; color:#eef2f6; font-weight:800; font-size:.9rem;
+    display:flex; flex-direction:column; align-items:center; gap:2px; min-width:78px;
+  }
+  .hbtn small { opacity:.5; font-weight:600; font-size:.6rem; }
+  .hbtn:hover { border-color: var(--gold); }
+  .hbtn:active { transform: translateY(1px); }
 
   .msg {
     position:absolute; top:46%; left:50%; transform:translate(-50%,-50%);
@@ -118,6 +127,7 @@
 
   /* Choice cards */
   .choices { display:grid; grid-template-columns: repeat(4, 1fr); gap:10px; }
+  .choices.inactive { opacity:.22; pointer-events:none; filter: grayscale(.7); }
   .choice {
     cursor:pointer; border:2px solid #45566a; border-radius:12px; padding:14px 6px;
     background: linear-gradient(180deg,#26313f,#1b2430); text-align:center;
@@ -222,6 +232,12 @@
       <div class="eyes">🙈</div>
       <div class="big" id="secretTitle">守備の番です</div>
       <div class="sub" id="secretSub">攻撃側は画面を見ないでください</div>
+      <div class="hide-choices" id="hideChoices">
+        <button class="hbtn" data-spot="1">1塁打<small>1</small></button>
+        <button class="hbtn" data-spot="2">2塁打<small>2</small></button>
+        <button class="hbtn" data-spot="3">3塁打<small>3</small></button>
+        <button class="hbtn" data-spot="HR">ホームラン<small>4</small></button>
+      </div>
     </div>
   </div>
 
@@ -324,7 +340,7 @@
     centerMsg:$("centerMsg"),
     secretBanner:$("secretBanner"), secretTitle:$("secretTitle"), secretSub:$("secretSub"),
     promptWho:$("promptWho"), promptInstr:$("promptInstr"),
-    choices:$("choices"),
+    choices:$("choices"), hideChoices:$("hideChoices"),
   };
 
   function fieldingTeam(){ return 1 - S.battingTeam; }
@@ -397,17 +413,18 @@
     S.phase="hide";
     S.locked=false;
     resetChoices();
+    els.choices.classList.add("inactive");  // real cards untouchable during hide → no glow leaks
     setRoleFlag();
     hideMsg();
 
-    // Secret hide phase: only fielding player interacts; offense looks away.
+    // Secret hide phase: defense selects inside the overlay only; offense looks away.
     els.secretTitle.textContent = `${S.names[fieldingTeam()]}（守備）がボールを隠します`;
     els.secretSub.textContent = `${S.names[S.battingTeam]}（攻撃）は画面から目をそらしてね 🙈`;
     els.secretBanner.classList.add("show");
 
     setPrompt(fieldingTeam(), "守備",
-      `1塁打・2塁打・3塁打・ホームランの<b>どこかにボールを隠そう</b>。<br>` +
-      `<span class="keycap">1</span><span class="keycap">2</span><span class="keycap">3</span><span class="keycap">4</span> またはカードを選択（相手に見られないように！）`);
+      `上の枠の <b>1塁打・2塁打・3塁打・ホームラン</b> から、<b>どこかにボールを隠そう</b>。<br>` +
+      `<span class="keycap">1</span><span class="keycap">2</span><span class="keycap">3</span><span class="keycap">4</span> でも選べます（相手に見られないように！）`);
   }
 
   function defenseHide(spot){
@@ -416,6 +433,8 @@
     S.hiddenSpot=spot;
     S.phase="guess";
     els.secretBanner.classList.remove("show");
+    els.choices.classList.remove("inactive");
+    if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
     markAvailability();
     showMsg("ボールを隠した！", "", 900);
     setTimeout(promptGuess, 700);
@@ -552,6 +571,15 @@
       const spot=c.getAttribute("data-spot");
       if(c.classList.contains("disabled")) return;
       handleSpot(spot);
+    });
+  });
+
+  // Defense hides via the buttons inside the secret overlay (keeps the real cards
+  // untouched so no lingering glow reveals the choice to the offense).
+  els.hideChoices.querySelectorAll(".hbtn").forEach(b=>{
+    b.addEventListener("click", ()=>{
+      if(S.phase!=="hide") return;
+      defenseHide(b.getAttribute("data-spot"));
     });
   });
 
